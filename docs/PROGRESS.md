@@ -17,7 +17,7 @@ The Agent updates this ledger only after a step has passed verification and paus
 | 11. Training integration smoke | PASS | 2026-09-10: 1-epoch YOLOv8x-Pose-P6 gray1 run completed on the bounded 21-class set; checkpoint contract and resource release verified | Step 12 after approval |
 | 12. Git content review | PASS | 2026-09-10: candidate content, ignore rules, secrets, size, text format, tests, wheel build/install, and publication risks reviewed | Step 13 after approval |
 | 13. GitHub publication | PASS | 2026-09-10: `main` pushed to `space-exploration-101/yolo-gray1-data-pipeline`; CI run 34482815028 success for content-guard, test, and image | Step 14 after approval |
-| 14. Clean-clone verification | TODO | | |
+| 14. Clean-clone verification | PASS | 2026-09-10: GitHub clone `a8709e5` rebuilt image `0.1.0-step14`; 46 tests passed; smoke hashes matched Step 9 | Step 15 after approval |
 | 15. `v0.1.0` release | TODO | | |
 | 16. NAS backup | TODO | Requires separate NAS write authorization | |
 
@@ -596,4 +596,46 @@ remaining:
   - Step 15 v0.1.0 tag
   - Step 16 NAS backup after separate authorization
 next_step: 14
+```
+
+## Step 14 completion record
+
+```yaml
+step: 14
+status: PASS
+started_at: 2026-09-10 21:34 CST
+finished_at: 2026-09-10 21:36 CST
+authorization: user explicitly requested Step 14
+reads:
+  - https://github.com/space-exploration-101/yolo-gray1-data-pipeline
+  - /data2/ai-i-chenshiwen/auto_landmark/Dataset/yolo_full
+  - /data3/ywang/yolo-gray1-data-pipeline-validation/step7/golden/fpga-validated-frame-001.bin
+changes:
+  - /data3/ywang/yolo-gray1-data-pipeline-validation/step14
+  - image ywang/yolo-gray1-data-pipeline:0.1.0-step14
+gpu_used: false
+source_data_modified: false
+root_modified: false
+chenshiwen_modified: false
+verification:
+  - clean clone HEAD a8709e5ea2429747697714f3288e2557ace8e4fc matches origin/main
+  - content-guard passed for 53 tracked files
+  - rebuilt image revision label equals the cloned commit
+  - CLI lists net1280 and cam2000
+  - 46 tests passed in a no-network read-only container, including the external FPGA golden
+  - cloned smoke selection/build/verify reproduced Step 9 hashes exactly
+  - source dataset.yaml mtime/size unchanged and the source tree is not writable
+artifacts:
+  - /data3/ywang/yolo-gray1-data-pipeline-validation/step14/clone
+  - /data3/ywang/yolo-gray1-data-pipeline-validation/step14/smoke21-v1-from-clone
+  - /data3/ywang/yolo-gray1-data-pipeline-validation/step14/step14-report.json
+  - image ywang/yolo-gray1-data-pipeline:0.1.0-step14
+  - image_id sha256:2269e484b91b366a88af4498263f667afdf00aa1141bbfeae1d4084410179eb0
+risks:
+  - pytest emitted a read-only cache warning; it did not fail tests
+  - the GitHub repository remains public
+remaining:
+  - Step 15 tag v0.1.0 after acceptance
+  - Step 16 NAS backup after separate authorization
+next_step: 15
 ```
