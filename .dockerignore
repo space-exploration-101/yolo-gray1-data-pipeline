@@ -22,5 +22,4 @@ tmp
 *.tar*
 *.zip
 docs
-examples
 tests
