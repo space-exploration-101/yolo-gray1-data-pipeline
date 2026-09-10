@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yolo-gray1-data-pipeline"
+version = "0.1.0.dev0"
+description = "Reproducible gray1 preprocessing for YOLO datasets and FPGA camera inputs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+authors = [{name = "space-exploration-101"}]
+dependencies = [
+  "numpy>=1.26,<2",
+  "opencv-python-headless>=4.11,<4.12",
+  "PyYAML>=6,<7",
+  "jsonschema>=4.23,<5",
+]
+
+[project.scripts]
+grayprep = "grayprep.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

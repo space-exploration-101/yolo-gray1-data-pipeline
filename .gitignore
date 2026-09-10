@@ -1,0 +1,59 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*credentials*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Datasets, caches, and generated outputs
+data/*
+!data/README.md
+!data/.gitkeep
+datasets/
+derived/
+outputs/
+runs/
+cache/
+tmp/
+*.partial
+
+# Models and large generated artifacts
+*.pt
+*.pth
+*.onnx
+*.engine
+*.bin
+*.tar
+*.tar.gz
+*.tar.zst
+*.zip
+
+# Local logs and reports
+*.log
+reports/local/

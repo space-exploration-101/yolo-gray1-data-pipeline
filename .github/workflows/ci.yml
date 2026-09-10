@@ -1,0 +1,50 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  content-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reject prohibited Git content
+        run: python scripts/check_git_contents.py
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked dependencies
+        run: python -m pip install --upgrade pip && python -m pip install --require-hashes -r docker/requirements.lock.txt
+      - name: Run unit and synthetic golden tests
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q
+      - name: Validate embedded profiles
+        env:
+          PYTHONPATH: src
+        run: python -m grayprep.cli list
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build locked preprocessing image
+        run: docker build --pull=false -f docker/Dockerfile -t ywang/yolo-gray1-data-pipeline:ci .
+      - name: Run default CLI in a no-network read-only container
+        run: >
+          docker run --rm --network none --read-only
+          --tmpfs /tmp:rw,noexec,nosuid,size=64m
+          ywang/yolo-gray1-data-pipeline:ci

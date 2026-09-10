@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/space-exploration-101/yolo-gray1-data-pipeline/schemas/preprocess-profile.schema.json",
+  "title": "Gray1 preprocessing profile",
+  "type": "object",
+  "required": ["schema_version", "name", "version", "status", "input", "resize", "output"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "name": {"enum": ["net1280", "cam2000"]},
+    "version": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["draft", "accepted", "retired"]},
+    "input": {
+      "type": "object",
+      "required": ["channels", "semantics", "dtype"],
+      "properties": {
+        "channels": {"const": 1},
+        "semantics": {"type": "string", "minLength": 1},
+        "dtype": {"const": "uint8"}
+      },
+      "additionalProperties": false
+    },
+    "resize": {
+      "type": "object",
+      "required": ["width", "height", "interpolation_down", "interpolation_up"],
+      "properties": {
+        "width": {"type": "integer", "minimum": 1},
+        "height": {"type": "integer", "minimum": 1},
+        "interpolation_down": {"enum": ["area", "linear", "exact_2x2_integer_average"]},
+        "interpolation_up": {"enum": ["linear", "nearest"]}
+      },
+      "additionalProperties": false
+    },
+    "output": {"type": "object"},
+    "padding": {"type": "object"},
+    "labels": {"type": "object"},
+    "camera": {"type": "object"},
+    "audience": {"type": "array", "items": {"type": "string"}, "uniqueItems": true}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"name": {"const": "net1280"}}},
+      "then": {
+        "required": ["padding", "labels"],
+        "properties": {
+          "resize": {"properties": {"width": {"const": 1000}, "height": {"const": 1000}}},
+          "padding": {
+            "required": ["left", "right", "top", "bottom", "value"],
+            "properties": {
+              "left": {"const": 140}, "right": {"const": 140},
+              "top": {"const": 140}, "bottom": {"const": 140},
+              "value": {"const": 0}
+            }
+          },
+          "output": {
+            "required": ["width", "height", "channels", "semantics", "dtype"],
+            "properties": {
+              "width": {"const": 1280}, "height": {"const": 1280},
+              "channels": {"const": 1}, "semantics": {"const": "gray1"},
+              "dtype": {"const": "uint8"}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"name": {"const": "cam2000"}}},
+      "then": {
+        "required": ["camera"],
+        "properties": {
+          "resize": {"properties": {"width": {"const": 2000}, "height": {"const": 2000}}},
+          "camera": {
+            "required": ["width", "height", "channels", "bit_depth", "bytes_per_row", "expected_file_bytes"],
+            "properties": {
+              "width": {"const": 2000}, "height": {"const": 2000},
+              "channels": {"const": 1}, "bit_depth": {"const": 12},
+              "bytes_per_row": {"const": 4096},
+              "expected_file_bytes": {"const": 8192000}
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"name": {"const": "cam2000"}, "status": {"const": "accepted"}}},
+      "then": {
+        "properties": {
+          "camera": {
+            "required": [
+              "sample_packing", "byte_order", "uint8_to_uint12",
+              "row_tail_value", "header_bytes", "trailer_bytes"
+            ],
+            "properties": {
+              "sample_packing": {"type": "string", "minLength": 1},
+              "byte_order": {"type": "string", "minLength": 1},
+              "uint8_to_uint12": {"type": "string", "minLength": 1},
+              "row_tail_value": {"type": "integer", "minimum": 0},
+              "header_bytes": {"type": "integer", "minimum": 0},
+              "trailer_bytes": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false
+}

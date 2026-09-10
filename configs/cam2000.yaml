@@ -1,0 +1,31 @@
+schema_version: 1
+name: cam2000
+version: 1
+status: accepted
+input:
+  channels: 1
+  semantics: color_to_gray
+  dtype: uint8
+resize:
+  width: 2000
+  height: 2000
+  interpolation_down: linear
+  interpolation_up: linear
+camera:
+  width: 2000
+  height: 2000
+  channels: 1
+  bit_depth: 12
+  bytes_per_row: 4096
+  active_bytes_per_row: 3000
+  padding_bytes_per_row: 1096
+  expected_file_bytes: 8192000
+  sample_packing: u12_pair_3byte_p0lo_p0hi-p1lo_p1hi
+  byte_order: custom_nibble_packed
+  uint8_to_uint12: round(v*4095/255)
+  row_tail_value: 0
+  header_bytes: 0
+  trailer_bytes: 0
+output:
+  extension: .bin
+  roundtrip_side_view: true

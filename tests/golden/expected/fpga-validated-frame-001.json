@@ -1,0 +1,16 @@
+{
+  "golden_id": "fpga-validated-frame-001",
+  "source_original_filename": "2_1.bin",
+  "source_status": "FPGA board validated, supplied by Human",
+  "storage_policy": "external; full bin is ignored by Git and retained in validation/NAS artifacts",
+  "file_size": 8192000,
+  "sha256": "06529cbe42b27710fd6bdf9814d90520aa9f63c8bfe46edf08ba6847eadd2182",
+  "decoded_shape": [2000, 2000],
+  "decoded_dtype": "uint16",
+  "decoded_min": 0,
+  "decoded_max": 2858,
+  "decoded_nonzero_samples": 77776,
+  "decoded_samples_sha256": "e385bf4366862d93ec451a588745d5219f38576cd2dd586e5c992783a4b97283",
+  "nonzero_padding_bytes": 0,
+  "reencode_byte_exact": true
+}

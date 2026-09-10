@@ -1,0 +1,32 @@
+schema_version: 1
+name: net1280
+version: 1
+status: draft
+audience: [train, val, test, calibration]
+input:
+  channels: 1
+  semantics: explicit_per_dataset
+  dtype: uint8
+resize:
+  width: 1000
+  height: 1000
+  interpolation_down: area
+  interpolation_up: linear
+padding:
+  left: 140
+  right: 140
+  top: 140
+  bottom: 140
+  value: 0
+output:
+  width: 1280
+  height: 1280
+  channels: 1
+  semantics: gray1
+  dtype: uint8
+  image_format: png
+labels:
+  format: yolo_pose
+  transform_boxes: true
+  transform_keypoints: true
+  normalize_against: [1280, 1280]

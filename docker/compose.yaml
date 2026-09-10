@@ -1,0 +1,17 @@
+services:
+  grayprep:
+    image: ywang/yolo-gray1-data-pipeline:0.1.0-dev
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        VCS_REF: ${VCS_REF:-uncommitted}
+    user: "${HOST_UID:-1012}:${HOST_GID:-1012}"
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    volumes:
+      - ${GRAYPREP_INPUT:-../data}:/input:ro
+      - ${GRAYPREP_OUTPUT:-../outputs}:/output:rw
+    command: ["list"]
