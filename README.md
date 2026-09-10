@@ -18,10 +18,10 @@
 ```bash
 docker build --pull=false \
   -f docker/Dockerfile \
-  -t ywang/yolo-gray1-data-pipeline:0.1.0 .
+  -t ywang/yolo-gray1-data-pipeline:0.1.1 .
 
 docker run --rm --network none --read-only \
-  ywang/yolo-gray1-data-pipeline:0.1.0
+  ywang/yolo-gray1-data-pipeline:0.1.1
 ```
 
 Compose 见 [`docker/compose.yaml`](docker/compose.yaml)。典型数据命令：
