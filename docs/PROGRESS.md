@@ -16,7 +16,7 @@ The Agent updates this ledger only after a step has passed verification and paus
 | 10. Full verification | PASS | 2026-09-10: 195 hashes, source semantics/hashes, shape/padding, labels/coordinates, split isolation, 21 bin roundtrips, deterministic reselection, and visual overlays passed | Step 11 optional GPU smoke or Step 12 review |
 | 11. Training integration smoke | PASS | 2026-09-10: 1-epoch YOLOv8x-Pose-P6 gray1 run completed on the bounded 21-class set; checkpoint contract and resource release verified | Step 12 after approval |
 | 12. Git content review | PASS | 2026-09-10: candidate content, ignore rules, secrets, size, text format, tests, wheel build/install, and publication risks reviewed | Step 13 after approval |
-| 13. GitHub publication | BLOCKED | 2026-09-10: first commit `51ed481` exists; private GitHub repository and write deploy key are still missing | Human create private repo and add deploy key |
+| 13. GitHub publication | PASS | 2026-09-10: `main` pushed to `space-exploration-101/yolo-gray1-data-pipeline`; CI run 34482815028 success for content-guard, test, and image | Step 14 after approval |
 | 14. Clean-clone verification | TODO | | |
 | 15. `v0.1.0` release | TODO | | |
 | 16. NAS backup | TODO | Requires separate NAS write authorization | |
@@ -563,40 +563,37 @@ next_step: 13
 
 ```yaml
 step: 13
-status: BLOCKED
+status: PASS
 started_at: 2026-09-10 21:05 CST
-finished_at: 2026-09-10 21:11 CST
-authorization: user explicitly requested Step 13
+finished_at: 2026-09-10 21:29 CST
+authorization: user explicitly requested Step 13 and confirmed the write deploy key
 reads:
   - /data3/ywang/yolo-gray1-data-pipeline
-  - docs/PROGRESS.md Step 12 PASS record
-  - GitHub API for space-exploration-101/yolo-gray1-data-pipeline
+  - https://github.com/space-exploration-101/yolo-gray1-data-pipeline
 changes:
-  - first Git commit 51ed4816761579f9587f5d427cf78d3a73124a32
-  - .github/workflows/ci.yml
-  - scripts/check_git_contents.py
-  - origin set to git@github.com-yolo-gray1-data-pipeline:space-exploration-101/yolo-gray1-data-pipeline.git
-  - ywang-owned SSH deploy keypair for this repository only
+  - origin git@github.com-yolo-gray1-data-pipeline:space-exploration-101/yolo-gray1-data-pipeline.git
+  - pushed main 51ed481 and bffe4a0
 gpu_used: false
 source_data_modified: false
 root_modified: false
 chenshiwen_modified: false
 verification:
-  - content-guard passed for 53 tracked files
-  - no datasets, weights, FPGA bins, or credentials were staged
-  - GitHub API returned 404 for space-exploration-101/yolo-gray1-data-pipeline
-  - new deploy key authenticates to GitHub as Permission denied (publickey)
-  - git push origin main failed because the repository and write key do not exist yet
+  - deploy key authenticates as space-exploration-101/yolo-gray1-data-pipeline
+  - git push -u origin main created refs/heads/main at bffe4a02a5221eff8c7bf826b2f6a6fb4bdd330c
+  - GitHub Actions ci run 34482815028 completed success
+  - jobs content-guard, test, and image all success
+  - 53 tracked files contain no datasets, weights, FPGA bins, or credentials
 artifacts:
+  - https://github.com/space-exploration-101/yolo-gray1-data-pipeline
+  - https://github.com/space-exploration-101/yolo-gray1-data-pipeline/actions/runs/34482815028
   - commit 51ed4816761579f9587f5d427cf78d3a73124a32
-  - /data3/ywang/yolo-gray1-data-pipeline-validation/step13/deploy.pub
+  - commit bffe4a02a5221eff8c7bf826b2f6a6fb4bdd330c
 risks:
-  - existing H200 GitHub key is a deploy key bound to space-exploration-101/quantitize-platform and cannot create or push a second repository
-  - this control machine has no gh CLI and no GitHub token
+  - the GitHub repository is public; operational docs contain internal paths, usernames, and one GPU UUID
+  - branch protection, CODEOWNERS, and required reviewers were not configured
 remaining:
-  - Human creates private repository space-exploration-101/yolo-gray1-data-pipeline with no README/license/gitignore
-  - Human adds the Step 13 deploy public key with Allow write access
-  - Human enables GitHub Actions on the private repository if it is disabled
-  - Agent resumes push of main and verifies CI jobs content-guard, test, and image
-next_step: 13 resume after the private repository and write deploy key exist
+  - Step 14 clean-clone and container rebuild verification
+  - Step 15 v0.1.0 tag
+  - Step 16 NAS backup after separate authorization
+next_step: 14
 ```

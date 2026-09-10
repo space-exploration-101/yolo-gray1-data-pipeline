@@ -35,4 +35,4 @@ docker run --rm --network none --read-only \
 - 运行依赖使用容器，不在 H200 主机直接安装 Python 或 Conda。
 - 源数据通过只读路径访问，派生数据只写入 ywang 所有的目录。
 
-目标远程：`https://github.com/space-exploration-101/yolo-gray1-data-pipeline`（private）。首次发布不包含数据集、模型、完整 FPGA bin 或验证输出。
+GitHub 远程：`https://github.com/space-exploration-101/yolo-gray1-data-pipeline`。当前仓库为 public。Git 不包含数据集、模型、完整 FPGA bin 或验证输出。
