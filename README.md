@@ -52,5 +52,6 @@ grayprep dataset verify-smoke --output /output/smoke21 --source /source
 4. **标签坐标错位。** `net1280` 先按比例缩到 1000，再平移 +140；不可见关键点保持 `[0,0,0]`。
 5. **二次运行结果不一致。** 确认配置、种子、源文件哈希未变，且没有手动改过输出目录。
 6. **Git 内容门禁失败。** `python scripts/check_git_contents.py` 会拒绝模型、bin、数据集和大于 1 MiB 的文件。
+7. **镜像或仓库丢了。** 先看 GitHub；都不可用时按 [docs/RESTORE.md](docs/RESTORE.md) 从 NAS 恢复。
 
-过程性验收记录不放在本说明中，见 [提交历史](https://github.com/space-exploration-101/yolo-gray1-data-pipeline/commits/main) 和 [Actions](https://github.com/space-exploration-101/yolo-gray1-data-pipeline/actions)。
+过程性验收记录见 [提交历史](https://github.com/space-exploration-101/yolo-gray1-data-pipeline/commits/main) 和 [Actions](https://github.com/space-exploration-101/yolo-gray1-data-pipeline/actions)。
