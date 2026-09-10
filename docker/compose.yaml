@@ -1,6 +1,6 @@
 services:
   grayprep:
-    image: ywang/yolo-gray1-data-pipeline:0.1.0-dev
+    image: ywang/yolo-gray1-data-pipeline:0.1.0
     build:
       context: ..
       dockerfile: docker/Dockerfile

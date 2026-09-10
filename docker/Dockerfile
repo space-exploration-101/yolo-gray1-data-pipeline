@@ -3,7 +3,7 @@ FROM python:3.12-slim@sha256:804ddf3251a60bbf9c92e73b7566c40428d54d0e79d3428194e
 ARG VCS_REF=uncommitted
 LABEL org.opencontainers.image.title="yolo-gray1-data-pipeline" \
       org.opencontainers.image.description="Deterministic gray1 preprocessing for YOLO and FPGA camera inputs" \
-      org.opencontainers.image.version="0.1.0-dev" \
+      org.opencontainers.image.version="0.1.0" \
       org.opencontainers.image.revision="${VCS_REF}"
 
 ENV LANG=C.UTF-8 \
