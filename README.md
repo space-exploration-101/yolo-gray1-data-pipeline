@@ -18,10 +18,10 @@
 ```bash
 docker build --pull=false \
   -f docker/Dockerfile \
-  -t ywang/yolo-gray1-data-pipeline:0.2.0 .
+  -t ywang/yolo-gray1-data-pipeline:0.2.1 .
 
 docker run --rm --network none --read-only \
-  ywang/yolo-gray1-data-pipeline:0.2.0
+  ywang/yolo-gray1-data-pipeline:0.2.1
 ```
 
 Compose 见 [`docker/compose.yaml`](docker/compose.yaml)。典型数据命令：
@@ -56,11 +56,21 @@ grayprep dataset index-full \
   --output /output/yolo-full-index.json \
   --schema /app/schemas/full-dataset-manifest.schema.json
 
+# 可选：生成 M 规模训练清单；val/test 保持完整
+grayprep dataset select-medium \
+  --manifest /output/yolo-full-index.json \
+  --output /output/yolo-medium-index.json \
+  --schema /app/schemas/full-dataset-manifest.schema.json \
+  --seed 20260917-medium-v1 \
+  --views-per-group 10 \
+  --empty-per-group 2 \
+  --moon-train 600
+
 # 2. 只生成 net1280 Gray1 图像和标签；中断后使用相同命令加 --resume
 grayprep dataset build-full \
   --source /source \
-  --manifest /output/yolo-full-index.json \
-  --output /output/pose21-gray1-1280-v1 \
+  --manifest /output/yolo-medium-index.json \
+  --output /output/pose21-gray1-1280-m-v1 \
   --net-config /app/configs/net1280.yaml \
   --profile-schema /app/schemas/preprocess-profile.schema.json \
   --manifest-schema /app/schemas/full-dataset-manifest.schema.json \
@@ -69,7 +79,7 @@ grayprep dataset build-full \
 
 # 3. 校验全部派生文件，确定性抽检 1000 个源图变换，然后原子发布
 grayprep dataset verify-full \
-  --output /output/pose21-gray1-1280-v1 \
+  --output /output/pose21-gray1-1280-m-v1 \
   --net-config /app/configs/net1280.yaml \
   --source /source \
   --source-sample 1000 \
@@ -79,6 +89,8 @@ grayprep dataset verify-full \
 ```
 
 `--source-sample 0` 表示逐项复算全部源图、R-only 语义、Gray1 像素和标签变换；正整数表示按源相对路径 SHA-256 排序后进行确定性抽检。正式 `--publish` 必须同时提供 `--source`。发布目录包含 `manifest.json`、`SHA256SUMS`、`verification_report.json` 和 `VERIFIED`。全量流程保留原 train/val/test、空标签和 `group_id`，不会生成 `cam2000` BIN。
+
+M 规模规则固定为：20 个地标使用全部训练 group，每组最多 10 个视角，目标为 2 个空标签加 8 个正样本；不足 2 个空标签时用正样本补足。`moon` 按 seed 确定性选择 600 张。val/test 完整保留，保证不同训练规模共享同一评估基准。
 
 断点续跑只接受相同源文件元数据、源标签哈希、源 manifest 和 net1280 配置。恢复时逐项校验已经完成的输出；不一致的单项派生文件会在暂存目录内重建，不会修改源数据。正式目录已存在时，构建和发布都会拒绝覆盖。
 

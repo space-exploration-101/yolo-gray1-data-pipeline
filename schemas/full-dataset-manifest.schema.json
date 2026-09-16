@@ -10,7 +10,7 @@
   ],
   "properties": {
     "schema_version": {"const": 1},
-    "manifest_type": {"const": "grayprep-full-index"},
+    "manifest_type": {"enum": ["grayprep-full-index", "grayprep-subset-index"]},
     "dataset_id": {"type": "string", "minLength": 1},
     "source_dataset_yaml": {"type": "string", "minLength": 1},
     "source_dataset_yaml_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
@@ -23,6 +23,8 @@
     "split_counts": {"type": "object"},
     "item_count": {"type": "integer", "minimum": 1},
     "source_revision": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "parent_manifest_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "selection": {"type": "object"},
     "items": {
       "type": "array", "minItems": 1,
       "items": {

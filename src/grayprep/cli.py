@@ -9,6 +9,7 @@ import json
 from grayprep import __version__
 from grayprep.dataset_full import (
     build_full_dataset,
+    create_medium_manifest,
     create_full_manifest,
     verify_full_dataset,
     write_full_manifest,
@@ -64,6 +65,14 @@ def build_parser() -> argparse.ArgumentParser:
     index_full_parser.add_argument("--source", required=True)
     index_full_parser.add_argument("--output", required=True)
     index_full_parser.add_argument("--schema", required=True)
+    select_medium_parser = dataset_commands.add_parser("select-medium", help="从全量索引生成固定 M 规模清单")
+    select_medium_parser.add_argument("--manifest", required=True)
+    select_medium_parser.add_argument("--output", required=True)
+    select_medium_parser.add_argument("--schema", required=True)
+    select_medium_parser.add_argument("--seed", required=True)
+    select_medium_parser.add_argument("--views-per-group", type=int, default=10)
+    select_medium_parser.add_argument("--empty-per-group", type=int, default=2)
+    select_medium_parser.add_argument("--moon-train", type=int, default=600)
     build_full_parser = dataset_commands.add_parser("build-full", help="断点续跑构建全量 net1280 数据")
     build_full_parser.add_argument("--source", required=True)
     build_full_parser.add_argument("--manifest", required=True)
@@ -141,6 +150,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             resume=args.resume,
         )
         print(json.dumps({"status": "BUILT_PENDING_VERIFICATION", "output": str(staging)}, ensure_ascii=False))
+        return 0
+    if args.command == "dataset" and args.dataset_command == "select-medium":
+        manifest = create_medium_manifest(
+            args.manifest,
+            schema_path=args.schema,
+            seed=args.seed,
+            views_per_group=args.views_per_group,
+            empty_per_group=args.empty_per_group,
+            moon_train=args.moon_train,
+        )
+        write_full_manifest(args.output, manifest)
+        print(
+            json.dumps(
+                {
+                    "status": "PASS",
+                    "items": manifest["item_count"],
+                    "split_counts": manifest["split_counts"],
+                    "source_revision": manifest["source_revision"],
+                    "output": args.output,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
         return 0
     if args.command == "dataset" and args.dataset_command == "verify-full":
         report = verify_full_dataset(

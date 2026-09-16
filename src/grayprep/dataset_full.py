@@ -190,6 +190,130 @@ def write_full_manifest(path: str | os.PathLike[str], manifest: Mapping[str, Any
     return atomic_write_bytes(path, _json_bytes(manifest))
 
 
+def _selection_key(seed: str, item: Mapping[str, Any]) -> str:
+    return hashlib.sha256(f"{seed}|{item['source_image']}".encode()).hexdigest()
+
+
+def _split_counts(items: list[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    counts: dict[str, dict[str, Any]] = {}
+    for split in FULL_SPLITS:
+        split_items = [item for item in items if item["split"] == split]
+        rows_per_class: Counter[int] = Counter()
+        for item in split_items:
+            rows_per_class.update(item["class_ids"])
+        counts[split] = {
+            "images": len(split_items),
+            "labels": len(split_items),
+            "empty_labels": sum(bool(item["is_empty"]) for item in split_items),
+            "groups": len({item["group_id"] for item in split_items}),
+            "rows_per_class": {str(key): value for key, value in sorted(rows_per_class.items())},
+        }
+    return counts
+
+
+def create_medium_manifest(
+    parent_manifest_path: str | os.PathLike[str],
+    *,
+    schema_path: str | os.PathLike[str],
+    seed: str,
+    views_per_group: int = 10,
+    empty_per_group: int = 2,
+    moon_train: int = 600,
+) -> dict[str, Any]:
+    """Select the fixed M-scale training set while retaining complete val/test splits."""
+
+    if not seed:
+        raise PreprocessError("seed 不能为空")
+    if views_per_group <= 0:
+        raise PreprocessError("views_per_group 必须大于 0")
+    if empty_per_group < 0 or empty_per_group > views_per_group:
+        raise PreprocessError("empty_per_group 必须位于 0..views_per_group")
+    if moon_train <= 0:
+        raise PreprocessError("moon_train 必须大于 0")
+
+    parent_path = Path(parent_manifest_path)
+    parent = _load_json(parent_path)
+    _validate_schema(parent, schema_path)
+    if parent.get("manifest_type") != "grayprep-full-index":
+        raise PreprocessError("M 规模选择要求未经筛选的 full index manifest")
+    names = parent["class_names"]
+    if len(names) != 21 or names[-1] != "moon":
+        raise PreprocessError("M 规模选择要求固定的 20 个地标加 moon 类别表")
+
+    train_items = [item for item in parent["items"] if item["split"] == "train"]
+    moon_items = [item for item in train_items if item["class_ids"] == [20]]
+    if len(moon_items) < moon_train:
+        raise PreprocessError(f"moon 训练样本不足 {moon_train}")
+    selected_train = sorted(moon_items, key=lambda item: _selection_key(seed, item))[:moon_train]
+
+    earth_groups: dict[str, list[Mapping[str, Any]]] = defaultdict(list)
+    for item in train_items:
+        if item["class_ids"] == [20]:
+            continue
+        earth_groups[str(item["group_id"])].append(item)
+    if not earth_groups:
+        raise PreprocessError("没有可选择的地标 group")
+    for group_id, group_items in sorted(earth_groups.items()):
+        classes = {class_id for item in group_items for class_id in item["class_ids"]}
+        if len(classes) != 1 or not classes.issubset(set(range(20))):
+            raise PreprocessError(f"地标 group 类别不唯一: {group_id}: {sorted(classes)}")
+        empty = sorted(
+            (item for item in group_items if item["is_empty"]),
+            key=lambda item: _selection_key(seed, item),
+        )
+        positive = sorted(
+            (item for item in group_items if not item["is_empty"]),
+            key=lambda item: _selection_key(seed, item),
+        )
+        chosen_empty = empty[:empty_per_group]
+        chosen = list(chosen_empty)
+        chosen.extend(positive[: views_per_group - len(chosen)])
+        if len(chosen) < views_per_group:
+            remaining = views_per_group - len(chosen)
+            chosen.extend(empty[len(chosen_empty) : len(chosen_empty) + remaining])
+        if len(chosen) != views_per_group:
+            raise PreprocessError(
+                f"group {group_id} 可用视角不足 {views_per_group}: {len(group_items)}"
+            )
+        selected_train.extend(chosen)
+
+    evaluation_items = [item for item in parent["items"] if item["split"] in {"val", "test"}]
+    selected_items = sorted(
+        [*selected_train, *evaluation_items],
+        key=lambda item: (FULL_SPLITS.index(str(item["split"])), str(item["source_image"])),
+    )
+    dataset_yaml_sha256 = parent["source_dataset_yaml_sha256"]
+    manifest = {
+        "schema_version": 1,
+        "manifest_type": "grayprep-subset-index",
+        "dataset_id": f"{parent['dataset_id']}-m",
+        "source_dataset_yaml": parent["source_dataset_yaml"],
+        "source_dataset_yaml_sha256": dataset_yaml_sha256,
+        "source_semantics": "r_only",
+        "class_names": names,
+        "kpt_shape": [2, 3],
+        "split_counts": _split_counts(selected_items),
+        "item_count": len(selected_items),
+        "source_revision": _source_revision(selected_items, dataset_yaml_sha256),
+        "parent_manifest_sha256": sha256_file(parent_path),
+        "selection": {
+            "name": "medium-v1",
+            "seed": seed,
+            "train_policy": {
+                "earth_groups": "all",
+                "views_per_group": views_per_group,
+                "empty_per_group_target": empty_per_group,
+                "positive_fill": True,
+                "moon_train": moon_train,
+            },
+            "evaluation_policy": "keep_complete_val_test",
+        },
+        "items": selected_items,
+    }
+    _validate_schema(manifest, schema_path)
+    return manifest
+
+
 def _ensure_bytes(path: Path, payload: bytes) -> None:
     if path.exists():
         if path.read_bytes() != payload:
@@ -392,8 +516,8 @@ def build_full_dataset(
     manifest_path = Path(manifest_path)
     manifest = _load_json(manifest_path)
     _validate_schema(manifest, manifest_schema_path)
-    if manifest.get("manifest_type") != "grayprep-full-index":
-        raise PreprocessError("输入不是 full index manifest")
+    if manifest.get("manifest_type") not in {"grayprep-full-index", "grayprep-subset-index"}:
+        raise PreprocessError("输入不是 full/subset index manifest")
     if manifest.get("source_semantics") != "r_only":
         raise PreprocessError("全量构建只接受 r_only 源语义")
     if sha256_file(root / "dataset.yaml") != manifest["source_dataset_yaml_sha256"]:

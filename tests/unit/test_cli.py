@@ -66,6 +66,32 @@ class CliTest(unittest.TestCase):
         self.assertEqual(build.call_args.kwargs["opencv_threads"], 1)
         self.assertTrue(build.call_args.kwargs["resume"])
 
+    @mock.patch("grayprep.cli.write_full_manifest")
+    @mock.patch("grayprep.cli.create_medium_manifest")
+    def test_select_medium_passes_policy(self, create: mock.Mock, write: mock.Mock) -> None:
+        create.return_value = {
+            "item_count": 100,
+            "split_counts": {},
+            "source_revision": "a" * 64,
+        }
+        result = main(
+            [
+                "dataset", "select-medium",
+                "--manifest", "/full.json",
+                "--output", "/medium.json",
+                "--schema", "/schema.json",
+                "--seed", "medium-v1",
+                "--views-per-group", "10",
+                "--empty-per-group", "2",
+                "--moon-train", "600",
+            ]
+        )
+        self.assertEqual(result, 0)
+        self.assertEqual(create.call_args.kwargs["views_per_group"], 10)
+        self.assertEqual(create.call_args.kwargs["empty_per_group"], 2)
+        self.assertEqual(create.call_args.kwargs["moon_train"], 600)
+        write.assert_called_once_with("/medium.json", create.return_value)
+
     @mock.patch("grayprep.cli.verify_full_dataset")
     def test_verify_full_passes_publish_and_source_sample(self, verify: mock.Mock) -> None:
         verify.return_value = {"status": "PASS"}

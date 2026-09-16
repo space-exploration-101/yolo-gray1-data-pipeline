@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 import tempfile
 from unittest import mock
 import unittest
@@ -12,6 +13,7 @@ import yaml
 from grayprep.dataset_full import (
     build_full_dataset,
     create_full_manifest,
+    create_medium_manifest,
     verify_full_dataset,
     write_full_manifest,
 )
@@ -185,6 +187,72 @@ class FullDatasetTest(unittest.TestCase):
                     net_profile_path=self._repository() / "configs/net1280.yaml",
                     publish=True,
                 )
+
+    def test_medium_selection_is_deterministic_and_keeps_eval(self) -> None:
+        def item(split: str, group: str, view: int, class_ids: list[int]) -> dict:
+            stem = f"{group}_view_{view:02d}"
+            return {
+                "split": split,
+                "group_id": group,
+                "source_image": f"images/{split}/{stem}.png",
+                "source_label": f"labels/{split}/{stem}.txt",
+                "source_image_size": 10,
+                "source_image_mtime_ns": 1,
+                "source_label_size": 10 if class_ids else 0,
+                "source_label_mtime_ns": 1,
+                "source_label_sha256": "c" * 64,
+                "is_empty": not class_ids,
+                "row_count": len(class_ids),
+                "class_ids": class_ids,
+            }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            items = []
+            for group, class_id in (("earth_a", 0), ("earth_b", 1)):
+                items.extend(
+                    [
+                        item("train", group, 1, [class_id]),
+                        item("train", group, 2, [class_id]),
+                        item("train", group, 3, []),
+                        item("train", group, 4, []),
+                    ]
+                )
+            items.extend(item("train", f"moon_{index}", 1, [20]) for index in range(3))
+            items.extend(
+                [item("val", "val_a", 1, [0]), item("test", "test_a", 1, [0])]
+            )
+            parent = {
+                "schema_version": 1,
+                "manifest_type": "grayprep-full-index",
+                "dataset_id": "fixture",
+                "source_dataset_yaml": "dataset.yaml",
+                "source_dataset_yaml_sha256": "b" * 64,
+                "source_semantics": "r_only",
+                "class_names": [f"class_{index}" for index in range(20)] + ["moon"],
+                "kpt_shape": [2, 3],
+                "split_counts": {},
+                "item_count": len(items),
+                "source_revision": "a" * 64,
+                "items": items,
+            }
+            parent_path = root / "full.json"
+            parent_path.write_text(json.dumps(parent), encoding="utf-8")
+            kwargs = {
+                "schema_path": self._repository() / "schemas/full-dataset-manifest.schema.json",
+                "seed": "medium-test",
+                "views_per_group": 3,
+                "empty_per_group": 1,
+                "moon_train": 2,
+            }
+            first = create_medium_manifest(parent_path, **kwargs)
+            second = create_medium_manifest(parent_path, **kwargs)
+            self.assertEqual(first, second)
+            self.assertEqual(first["manifest_type"], "grayprep-subset-index")
+            self.assertEqual(first["split_counts"]["train"]["images"], 8)
+            self.assertEqual(first["split_counts"]["train"]["empty_labels"], 2)
+            self.assertEqual(first["split_counts"]["val"]["images"], 1)
+            self.assertEqual(first["split_counts"]["test"]["images"], 1)
 
 
 if __name__ == "__main__":
