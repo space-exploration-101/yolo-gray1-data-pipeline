@@ -37,12 +37,34 @@ grayprep dataset build-smoke \
   --output /output/smoke21 \
   --net-config /app/configs/net1280.yaml \
   --cam-config /app/configs/cam2000.yaml \
-  --schema /app/schemas/preprocess-profile.schema.json
+  --schema /app/schemas/preprocess-profile.schema.json \
+  --workers 32 \
+  --opencv-threads 1
 
 grayprep dataset verify-smoke --output /output/smoke21 --source /source
 ```
 
 约定：默认不覆盖已有输出；相同输入和配置应得到相同 manifest 与内容哈希；写文件走 `.partial`，校验后再原子改名。源数据只读挂载，派生结果写到调用方提供的输出目录。不要把数据集、`.pt`、`.onnx`、完整 `.bin`、凭据或运行产物提交到 Git。
+
+`build-smoke` 默认 `--workers 1`，用于兼容和问题回退。批量处理的已验证配置是
+`--workers 32 --opencv-threads 1`；多进程模式必须显式给出 `--opencv-threads`，避免
+每个进程各自创建过多 OpenCV 线程。H200 是共享服务器，实际 worker 数仍需服从当时
+的 CPU、内存和存储负载。
+
+## 性能验收
+
+2026-09-11 在 H200 上使用固定的 4,200-item p50 数据集完成 CPU 端到端验收。组合流程
+从单进程基线的 `2.1114 items/s` 提升到 `32 workers x 1 OpenCV thread` 的
+`54.7514 items/s`，吞吐提升 **25.93 倍**，等量 wall time 降低 **96.14%**。最终三轮
+吞吐为 `52.9785 / 54.7514 / 54.8325 items/s`，波动 **3.39%**。
+
+三轮输出的 SHA-256 清单完全一致；共检查 4,200 个 item、9,456 个哈希和 1,050 个
+cam2000 BIN，失败数和残留 `.partial` 均为 0。`/data1` NVMe scratch 相比 `/data3`
+输出路径快约 **10.55%**，因此批处理推荐使用 `/data1` 作为临时输出盘。当前热点主要是
+CPU PNG 解码，现有证据不支持为该流程引入 GPU。
+
+性能结论和简要试验步骤见
+[`docs/perf_test/PERFORMANCE_REPORT.md`](docs/perf_test/PERFORMANCE_REPORT.md)。
 
 ## 排错
 

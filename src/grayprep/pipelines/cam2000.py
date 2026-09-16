@@ -195,9 +195,17 @@ def encode_frame(gray_u12: np.ndarray, spec: Cam2000Spec = Cam2000Spec()) -> byt
     rows = np.full(
         (spec.height, spec.bytes_per_row), spec.row_tail_value, dtype=np.uint8
     )
-    for row_index in range(spec.height):
-        active = np.frombuffer(pack_12bit_to_bytes(samples[row_index]), dtype=np.uint8)
-        rows[row_index, : spec.active_bytes_per_row] = active
+    values = samples.astype(np.uint16, copy=False)
+    if spec.width % 2:
+        values = np.pad(
+            values, ((0, 0), (0, 1)), mode="constant", constant_values=0
+        )
+    first = values[:, 0::2]
+    second = values[:, 1::2]
+    active = rows[:, : spec.active_bytes_per_row].reshape(spec.height, -1, 3)
+    active[:, :, 0] = first & 0xFF
+    active[:, :, 1] = ((second & 0x0F) << 4) | ((first >> 8) & 0x0F)
+    active[:, :, 2] = (second >> 4) & 0xFF
     payload = rows.tobytes()
     if len(payload) != spec.expected_file_bytes:
         raise PreprocessError(
@@ -224,13 +232,14 @@ def decode_frame(
         tails = rows[:, spec.active_bytes_per_row :]
         if np.any(tails != spec.row_tail_value):
             raise PreprocessError("检测到非零或不符合协议的行尾填充字节")
-    output = np.empty((spec.height, spec.width), dtype=np.uint16)
-    for row_index in range(spec.height):
-        unpacked = unpack_12bit_from_bytes(
-            rows[row_index, : spec.active_bytes_per_row].tobytes()
-        )
-        output[row_index] = unpacked[: spec.width]
-    return output
+    packed = rows[:, : spec.active_bytes_per_row].reshape(spec.height, -1, 3)
+    middle = packed[:, :, 1].astype(np.uint16)
+    first = packed[:, :, 0].astype(np.uint16) | ((middle & 0x0F) << 8)
+    second = (packed[:, :, 2].astype(np.uint16) << 4) | (middle >> 4)
+    output = np.empty((spec.height, first.shape[1] * 2), dtype=np.uint16)
+    output[:, 0::2] = first
+    output[:, 1::2] = second
+    return output[:, : spec.width]
 
 
 def write_camera_bin(

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from concurrent.futures import ProcessPoolExecutor
 import hashlib
 import json
+import multiprocessing as mp
 import os
 from pathlib import Path
+import shutil
 from typing import Any, Mapping
 
 import cv2
@@ -38,6 +41,7 @@ from grayprep.pipelines.net1280 import (
 
 
 SPLITS = ("train", "val", "test", "calibration")
+_WORKER_STATE: dict[str, Any] = {}
 
 
 def _json_bytes(value: Any) -> bytes:
@@ -182,6 +186,110 @@ def _write_sha256sums(root: Path) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _process_smoke_item(
+    item: Mapping[str, Any],
+    *,
+    root: Path,
+    staging: Path,
+    net_spec: Any,
+    cam_spec: Any,
+) -> dict[str, Any]:
+    """Materialize one manifest item into paths owned only by that item."""
+
+    split = item["split"]
+    source_image = root / item["source_image"]
+    source_label = root / item["source_label"]
+    image = read_image(source_image)
+    _require_r_only(image, item["source_image"])
+    source_height, source_width = image.shape[:2]
+    label_text = source_label.read_text(encoding="utf-8")
+
+    net_image = transform_image(image, "r_only", net_spec)
+    net_label = transform_label_text(
+        label_text,
+        source_width=source_width,
+        source_height=source_height,
+        keypoint_count=2,
+        spec=net_spec,
+    )
+    stem = source_image.stem
+    output_image_rel = f"images/{split}/{stem}.png"
+    output_label_rel = f"labels/{split}/{stem}.txt"
+    write_gray_png(staging / output_image_rel, net_image)
+    atomic_write_bytes(staging / output_label_rel, net_label.encode("utf-8"))
+
+    output_item = {
+        **item,
+        "source_width": source_width,
+        "source_height": source_height,
+        "source_image_sha256": sha256_file(source_image),
+        "source_label_sha256": sha256_file(source_label),
+        "output_image": output_image_rel,
+        "output_label": output_label_rel,
+        "output_image_sha256": sha256_file(staging / output_image_rel),
+        "output_label_sha256": sha256_file(staging / output_label_rel),
+        "resize_scale_x": net_spec.resize_width / source_width,
+        "resize_scale_y": net_spec.resize_height / source_height,
+        "padding": [net_spec.pad_left, net_spec.pad_top, net_spec.pad_right, net_spec.pad_bottom],
+    }
+    if split == "test":
+        fpga_rel = f"fpga/test/{stem}.bin"
+        u12 = transform_image_to_u12(image, "r_only", cam_spec)
+        write_camera_bin(staging / fpga_rel, u12, cam_spec)
+        output_item.update(
+            {
+                "fpga_bin": fpga_rel,
+                "fpga_bin_bytes": (staging / fpga_rel).stat().st_size,
+                "fpga_bin_sha256": sha256_file(staging / fpga_rel),
+            }
+        )
+    return output_item
+
+
+def _initialize_smoke_worker(
+    source_root: str,
+    staging_root: str,
+    net_profile: Mapping[str, Any],
+    cam_profile: Mapping[str, Any],
+    opencv_threads: int,
+) -> None:
+    cv2.setNumThreads(opencv_threads)
+    _WORKER_STATE.clear()
+    _WORKER_STATE.update(
+        {
+            "root": Path(source_root),
+            "staging": Path(staging_root),
+            "net_spec": net_spec_from_profile(net_profile),
+            "cam_spec": cam_spec_from_profile(cam_profile),
+        }
+    )
+
+
+def _process_smoke_item_worker(item: Mapping[str, Any]) -> dict[str, Any]:
+    return _process_smoke_item(item, **_WORKER_STATE)
+
+
+def _validate_parallel_settings(workers: int, opencv_threads: int | None) -> None:
+    if workers <= 0:
+        raise PreprocessError("workers 必须大于 0")
+    if opencv_threads is not None and opencv_threads <= 0:
+        raise PreprocessError("opencv_threads 必须大于 0")
+    if workers > 1 and opencv_threads is None:
+        raise PreprocessError("多进程模式必须显式设置 opencv_threads")
+
+
+def _validate_unique_output_paths(items: list[Mapping[str, Any]]) -> None:
+    paths: list[str] = []
+    for item in items:
+        split = item["split"]
+        stem = Path(item["source_image"]).stem
+        paths.extend((f"images/{split}/{stem}.png", f"labels/{split}/{stem}.txt"))
+        if split == "test":
+            paths.append(f"fpga/test/{stem}.bin")
+    if len(paths) != len(set(paths)):
+        raise PreprocessError("manifest 中存在冲突的输出路径，拒绝并发写入")
+
+
 def build_smoke_dataset(
     source_root: str | os.PathLike[str],
     manifest_path: str | os.PathLike[str],
@@ -190,9 +298,12 @@ def build_smoke_dataset(
     net_profile_path: str | os.PathLike[str],
     cam_profile_path: str | os.PathLike[str],
     schema_path: str | os.PathLike[str],
+    workers: int = 1,
+    opencv_threads: int | None = None,
 ) -> Path:
     """Materialize a bounded smoke dataset through a verified staging directory."""
 
+    _validate_parallel_settings(workers, opencv_threads)
     root = Path(source_root)
     destination = Path(output)
     staging = destination.with_name(destination.name + ".partial")
@@ -205,6 +316,10 @@ def build_smoke_dataset(
         raise PreprocessError("当前 yolo_full 烟测必须显式使用 r_only")
     if sha256_file(root / "dataset.yaml") != manifest["source_dataset_yaml_sha256"]:
         raise PreprocessError("源 dataset.yaml 与选择 manifest 不一致")
+    items = manifest.get("items")
+    if not isinstance(items, list):
+        raise PreprocessError("manifest items 必须是列表")
+    _validate_unique_output_paths(items)
 
     net_profile = _load_yaml(Path(net_profile_path))
     cam_profile = _load_yaml(Path(cam_profile_path))
@@ -230,56 +345,39 @@ def build_smoke_dataset(
         yaml.safe_dump(resolved, sort_keys=True, allow_unicode=True).encode("utf-8"),
     )
 
-    for item in manifest["items"]:
-        split = item["split"]
-        source_image = root / item["source_image"]
-        source_label = root / item["source_label"]
-        image = read_image(source_image)
-        _require_r_only(image, item["source_image"])
-        source_height, source_width = image.shape[:2]
-        label_text = source_label.read_text(encoding="utf-8")
+    try:
+        if workers == 1:
+            previous_threads = cv2.getNumThreads()
+            try:
+                if opencv_threads is not None:
+                    cv2.setNumThreads(opencv_threads)
+                output_items = [
+                    _process_smoke_item(
+                        item,
+                        root=root,
+                        staging=staging,
+                        net_spec=net_spec,
+                        cam_spec=cam_spec,
+                    )
+                    for item in items
+                ]
+            finally:
+                if opencv_threads is not None:
+                    cv2.setNumThreads(previous_threads)
+        else:
+            with ProcessPoolExecutor(
+                max_workers=workers,
+                mp_context=mp.get_context("spawn"),
+                initializer=_initialize_smoke_worker,
+                initargs=(str(root), str(staging), net_profile, cam_profile, opencv_threads),
+            ) as executor:
+                output_items = list(executor.map(_process_smoke_item_worker, items, chunksize=1))
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
-        net_image = transform_image(image, "r_only", net_spec)
-        net_label = transform_label_text(
-            label_text,
-            source_width=source_width,
-            source_height=source_height,
-            keypoint_count=2,
-            spec=net_spec,
-        )
-        stem = source_image.stem
-        output_image_rel = f"images/{split}/{stem}.png"
-        output_label_rel = f"labels/{split}/{stem}.txt"
-        write_gray_png(staging / output_image_rel, net_image)
-        atomic_write_bytes(staging / output_label_rel, net_label.encode("utf-8"))
-
-        output_item = {
-            **item,
-            "source_width": source_width,
-            "source_height": source_height,
-            "source_image_sha256": sha256_file(source_image),
-            "source_label_sha256": sha256_file(source_label),
-            "output_image": output_image_rel,
-            "output_label": output_label_rel,
-            "output_image_sha256": sha256_file(staging / output_image_rel),
-            "output_label_sha256": sha256_file(staging / output_label_rel),
-            "resize_scale_x": net_spec.resize_width / source_width,
-            "resize_scale_y": net_spec.resize_height / source_height,
-            "padding": [net_spec.pad_left, net_spec.pad_top, net_spec.pad_right, net_spec.pad_bottom],
-        }
-        if split == "test":
-            fpga_rel = f"fpga/test/{stem}.bin"
-            u12 = transform_image_to_u12(image, "r_only", cam_spec)
-            write_camera_bin(staging / fpga_rel, u12, cam_spec)
-            output_item.update(
-                {
-                    "fpga_bin": fpga_rel,
-                    "fpga_bin_bytes": (staging / fpga_rel).stat().st_size,
-                    "fpga_bin_sha256": sha256_file(staging / fpga_rel),
-                }
-            )
-        output_items.append(output_item)
-        statistics[split][str(item["class_id"])] += 1
+    for item in output_items:
+        statistics[item["split"]][str(item["class_id"])] += 1
 
     output_manifest = {
         "schema_version": 1,

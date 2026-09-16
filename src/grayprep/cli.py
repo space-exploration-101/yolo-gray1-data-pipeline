@@ -49,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     build_parser_smoke.add_argument("--net-config", required=True)
     build_parser_smoke.add_argument("--cam-config", required=True)
     build_parser_smoke.add_argument("--schema", required=True)
+    build_parser_smoke.add_argument("--workers", type=int, default=1)
+    build_parser_smoke.add_argument("--opencv-threads", type=int)
     verify_parser = dataset_commands.add_parser("verify-smoke", help="严格验证烟测产物")
     verify_parser.add_argument("--output", required=True)
     verify_parser.add_argument("--source")
@@ -75,6 +77,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             net_profile_path=args.net_config,
             cam_profile_path=args.cam_config,
             schema_path=args.schema,
+            workers=args.workers,
+            opencv_threads=args.opencv_threads,
         )
         print(json.dumps({"status": "PASS", "output": str(output)}, ensure_ascii=False))
         return 0

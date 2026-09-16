@@ -86,6 +86,21 @@ class CameraFrameTest(unittest.TestCase):
         with self.assertRaises(PreprocessError):
             decode_frame(payload, spec)
 
+    def test_odd_width_frame_roundtrip(self) -> None:
+        spec = Cam2000Spec(
+            width=3,
+            height=2,
+            bytes_per_row=8,
+            expected_file_bytes=16,
+        )
+        frame = np.array([[0xABC, 0x123, 0xFFF], [0, 1, 2]], dtype=np.uint16)
+        payload = encode_frame(frame, spec)
+
+        self.assertEqual(len(payload), 16)
+        rows = np.frombuffer(payload, dtype=np.uint8).reshape(2, 8)
+        self.assertTrue(np.all(rows[:, 6:] == 0))
+        np.testing.assert_array_equal(decode_frame(payload, spec), frame)
+
     def test_wrong_file_size_is_rejected(self) -> None:
         with self.assertRaises(PreprocessError):
             decode_frame(b"\x00" * 10)
