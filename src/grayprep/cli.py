@@ -7,6 +7,12 @@ from collections.abc import Sequence
 import json
 
 from grayprep import __version__
+from grayprep.dataset_full import (
+    build_full_dataset,
+    create_full_manifest,
+    verify_full_dataset,
+    write_full_manifest,
+)
 from grayprep.dataset_smoke import (
     build_smoke_dataset,
     create_smoke_manifest,
@@ -35,7 +41,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--output", required=True)
     run_parser.add_argument("--dry-run", action="store_true")
 
-    dataset_parser = subparsers.add_parser("dataset", help="有界数据集烟测工具")
+    dataset_parser = subparsers.add_parser("dataset", help="数据集索引、构建和验证工具")
     dataset_commands = dataset_parser.add_subparsers(dest="dataset_command", required=True)
     select_parser = dataset_commands.add_parser("select-smoke", help="确定性选择每类烟测样本")
     select_parser.add_argument("--source", required=True)
@@ -54,6 +60,28 @@ def build_parser() -> argparse.ArgumentParser:
     verify_parser = dataset_commands.add_parser("verify-smoke", help="严格验证烟测产物")
     verify_parser.add_argument("--output", required=True)
     verify_parser.add_argument("--source")
+    index_full_parser = dataset_commands.add_parser("index-full", help="生成确定性的全量源数据索引")
+    index_full_parser.add_argument("--source", required=True)
+    index_full_parser.add_argument("--output", required=True)
+    index_full_parser.add_argument("--schema", required=True)
+    build_full_parser = dataset_commands.add_parser("build-full", help="断点续跑构建全量 net1280 数据")
+    build_full_parser.add_argument("--source", required=True)
+    build_full_parser.add_argument("--manifest", required=True)
+    build_full_parser.add_argument("--output", required=True)
+    build_full_parser.add_argument("--net-config", required=True)
+    build_full_parser.add_argument("--profile-schema", required=True)
+    build_full_parser.add_argument("--manifest-schema", required=True)
+    build_full_parser.add_argument("--workers", type=int, default=1)
+    build_full_parser.add_argument("--opencv-threads", type=int)
+    build_full_parser.add_argument("--resume", action="store_true")
+    verify_full_parser = dataset_commands.add_parser("verify-full", help="验证并可原子发布全量数据")
+    verify_full_parser.add_argument("--output", required=True)
+    verify_full_parser.add_argument("--net-config", required=True)
+    verify_full_parser.add_argument("--source")
+    verify_full_parser.add_argument("--source-sample", type=int, default=0)
+    verify_full_parser.add_argument("--workers", type=int, default=1)
+    verify_full_parser.add_argument("--opencv-threads", type=int)
+    verify_full_parser.add_argument("--publish", action="store_true")
 
     return parser
 
@@ -85,7 +113,48 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "dataset" and args.dataset_command == "verify-smoke":
         print(json.dumps(verify_smoke_dataset(args.output, source_root=args.source), ensure_ascii=False, sort_keys=True))
         return 0
-    raise SystemExit("run 命令将在后续步骤实现；当前仓库只有 CLI 和配置骨架")
+    if args.command == "dataset" and args.dataset_command == "index-full":
+        manifest = create_full_manifest(args.source, schema_path=args.schema)
+        write_full_manifest(args.output, manifest)
+        print(
+            json.dumps(
+                {
+                    "status": "PASS",
+                    "items": manifest["item_count"],
+                    "source_revision": manifest["source_revision"],
+                    "output": args.output,
+                },
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    if args.command == "dataset" and args.dataset_command == "build-full":
+        staging = build_full_dataset(
+            args.source,
+            args.manifest,
+            args.output,
+            net_profile_path=args.net_config,
+            profile_schema_path=args.profile_schema,
+            manifest_schema_path=args.manifest_schema,
+            workers=args.workers,
+            opencv_threads=args.opencv_threads,
+            resume=args.resume,
+        )
+        print(json.dumps({"status": "BUILT_PENDING_VERIFICATION", "output": str(staging)}, ensure_ascii=False))
+        return 0
+    if args.command == "dataset" and args.dataset_command == "verify-full":
+        report = verify_full_dataset(
+            args.output,
+            net_profile_path=args.net_config,
+            source_root=args.source,
+            source_sample=args.source_sample,
+            workers=args.workers,
+            opencv_threads=args.opencv_threads,
+            publish=args.publish,
+        )
+        print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+        return 0
+    raise SystemExit("run 命令尚未实现；请使用 dataset 下的明确子命令")
 
 
 if __name__ == "__main__":

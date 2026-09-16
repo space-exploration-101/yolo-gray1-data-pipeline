@@ -18,10 +18,10 @@
 ```bash
 docker build --pull=false \
   -f docker/Dockerfile \
-  -t ywang/yolo-gray1-data-pipeline:0.1.1 .
+  -t ywang/yolo-gray1-data-pipeline:0.2.0 .
 
 docker run --rm --network none --read-only \
-  ywang/yolo-gray1-data-pipeline:0.1.1
+  ywang/yolo-gray1-data-pipeline:0.2.0
 ```
 
 Compose 见 [`docker/compose.yaml`](docker/compose.yaml)。典型数据命令：
@@ -44,9 +44,47 @@ grayprep dataset build-smoke \
 grayprep dataset verify-smoke --output /output/smoke21 --source /source
 ```
 
+### 全量训练数据
+
+全量流程分成索引、可续跑构建和严格验证三个门禁。`build-full` 只写
+`<output>.partial`；只有 `verify-full --publish` 全部通过后才原子发布正式目录。
+
+```bash
+# 1. 冻结完整源数据清单；不解码图片，也不写源目录
+grayprep dataset index-full \
+  --source /source \
+  --output /output/yolo-full-index.json \
+  --schema /app/schemas/full-dataset-manifest.schema.json
+
+# 2. 只生成 net1280 Gray1 图像和标签；中断后使用相同命令加 --resume
+grayprep dataset build-full \
+  --source /source \
+  --manifest /output/yolo-full-index.json \
+  --output /output/pose21-gray1-1280-v1 \
+  --net-config /app/configs/net1280.yaml \
+  --profile-schema /app/schemas/preprocess-profile.schema.json \
+  --manifest-schema /app/schemas/full-dataset-manifest.schema.json \
+  --workers 32 \
+  --opencv-threads 1
+
+# 3. 校验全部派生文件，确定性抽检 1000 个源图变换，然后原子发布
+grayprep dataset verify-full \
+  --output /output/pose21-gray1-1280-v1 \
+  --net-config /app/configs/net1280.yaml \
+  --source /source \
+  --source-sample 1000 \
+  --workers 32 \
+  --opencv-threads 1 \
+  --publish
+```
+
+`--source-sample 0` 表示逐项复算全部源图、R-only 语义、Gray1 像素和标签变换；正整数表示按源相对路径 SHA-256 排序后进行确定性抽检。正式 `--publish` 必须同时提供 `--source`。发布目录包含 `manifest.json`、`SHA256SUMS`、`verification_report.json` 和 `VERIFIED`。全量流程保留原 train/val/test、空标签和 `group_id`，不会生成 `cam2000` BIN。
+
+断点续跑只接受相同源文件元数据、源标签哈希、源 manifest 和 net1280 配置。恢复时逐项校验已经完成的输出；不一致的单项派生文件会在暂存目录内重建，不会修改源数据。正式目录已存在时，构建和发布都会拒绝覆盖。
+
 约定：默认不覆盖已有输出；相同输入和配置应得到相同 manifest 与内容哈希；写文件走 `.partial`，校验后再原子改名。源数据只读挂载，派生结果写到调用方提供的输出目录。不要把数据集、`.pt`、`.onnx`、完整 `.bin`、凭据或运行产物提交到 Git。
 
-`build-smoke` 默认 `--workers 1`，用于兼容和问题回退。批量处理的已验证配置是
+`build-smoke`、`build-full` 和 `verify-full` 默认 `--workers 1`，用于兼容和问题回退。批量处理的已验证配置是
 `--workers 32 --opencv-threads 1`；多进程模式必须显式给出 `--opencv-threads`，避免
 每个进程各自创建过多 OpenCV 线程。H200 是共享服务器，实际 worker 数仍需服从当时
 的 CPU、内存和存储负载。
@@ -75,5 +113,7 @@ CPU PNG 解码，现有证据不支持为该流程引入 GPU。
 5. **二次运行结果不一致。** 确认配置、种子、源文件哈希未变，且没有手动改过输出目录。
 6. **Git 内容门禁失败。** `python scripts/check_git_contents.py` 会拒绝模型、bin、数据集和大于 1 MiB 的文件。
 7. **镜像或仓库丢了。** 先看 GitHub；都不可用时按 [docs/RESTORE.md](docs/RESTORE.md) 从 NAS 恢复。
+8. **全量构建中断。** 保留 `<output>.partial`，确认源 manifest 和配置未变化后，对原命令增加 `--resume`。不要手工移动半成品或伪造 `VERIFIED`。
+9. **全量发布失败。** 查看 `verify-full` 的首批 failure；修复工具后从暂存目录续跑或重新验证。只有 `--publish` 成功才会出现正式目录。
 
 过程性验收记录见 [提交历史](https://github.com/space-exploration-101/yolo-gray1-data-pipeline/commits/main) 和 [Actions](https://github.com/space-exploration-101/yolo-gray1-data-pipeline/actions)。
